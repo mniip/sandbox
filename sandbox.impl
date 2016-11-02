@@ -1,0 +1,191 @@
+#include <list>
+#include <string>
+#include <stdexcept>
+
+#include "sandbox.h"
+
+extern "C" {
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <stddef.h>
+#include <errno.h>
+#include <unistd.h>
+#include <string.h>
+
+#include <sys/wait.h>
+#include <sys/ptrace.h>
+#include <sys/user.h>
+}
+
+template<typename T> typename std::list<T>::iterator Sandbox<T>::thread_add(pid_t tid)
+{
+	T th(tid);
+	return threads.insert(threads.end(), tid);
+}
+
+template<typename T> typename std::list<T>::iterator Sandbox<T>::find_tid(pid_t tid)
+{
+	typename std::list<T>::iterator i = threads.begin();
+	for(typename std::list<T>::iterator end = threads.end(); i != end; i++)
+		if(i->tid == tid)
+			return i;
+	return i;
+}
+
+template<typename T> bool Sandbox<T>::ptrace_traceme()
+{
+	if(ptrace(PTRACE_TRACEME))
+		return false;
+	return true;
+}
+
+template<typename T> pid_t Sandbox<T>::spawn_process(char const *path, int argc, char const *const *argv)
+{
+	char const **args = new char const *[argc + 1];
+	for(int i = 0; i < argc; i++)
+		args[i] = argv[i];
+	args[argc] = NULL;
+	pid_t pid = fork();
+	if(pid < 0)
+		panic_errno("fork");
+	if(!pid)
+	{
+		if(!ptrace_traceme())
+			panic_errno("ptrace TRACEME");
+		execvp(path, (char **)args);
+		panic_errno("execvp");
+	}
+	else
+	{
+		delete[] args;
+		T &init = *thread_add(pid);
+		init.had_syscall_entry = true;
+		init.suppress_stop = true;
+		return pid;
+	}
+}
+
+template<typename T> void Sandbox<T>::event_loop()
+{
+	while(threads.size())
+	{
+		int status;
+		pid_t tid = wait(&status);
+		if(tid < 0)
+			panic_errno("wait");
+		typename std::list<T>::iterator th = find_tid(tid);
+		if(th == threads.end())
+		{
+			if(WIFSTOPPED(status) && WSTOPSIG(status) == SIGSTOP)
+			{
+				T &unkth = *thread_add(tid);
+				unkth.unknown = true;
+			}
+			else
+			{
+				panic("Got unexpected notification for thread");
+			}
+		}
+		else
+		{
+			try
+			{
+				if(th->unknown)
+					panic("Got notification for unknown thread");
+				th->set_options();
+				if(WIFEXITED(status))
+				{
+					th->on_exit(*this, status);
+					threads.erase(th);
+				}
+				else if(WIFSIGNALED(status))
+				{
+					th->on_exit(*this, status);
+					threads.erase(th);
+				}
+				else if(WIFSTOPPED(status))
+				{
+					siginfo_t info;
+					if(!th->ptrace_getsiginfo(info))
+						if(errno == EINVAL)
+							panic_errno("ptrace GETSIGINFO");
+					if(WSTOPSIG(status) == SIGTRAP && (errno == EINVAL || th->suppress_stop || (info.si_code & 0xFF) == SIGTRAP))
+					{
+						int event = status >> 16;
+						if(!event)
+						{
+							if(th->had_syscall_entry)
+							{
+								th->had_syscall_entry = false;
+								th->on_syscall_exit(*this);
+							}
+							else
+							{
+								th->had_syscall_entry = true;
+								th->on_syscall_entry(*this);
+							}
+						}
+						else if(event == PTRACE_EVENT_CLONE || event == PTRACE_EVENT_FORK || event == PTRACE_EVENT_VFORK)
+						{
+							unsigned long newtid;
+							if(!th->ptrace_geteventmsg(newtid))
+								panic_errno("ptrace GETEVENTMSG");
+							typename std::list<T>::iterator unkth = find_tid(newtid);
+							if(unkth == threads.end())
+							{
+								T &newth = *thread_add(newtid);
+								newth.suppress_stop = true;
+							}
+							else
+							{
+								if(!unkth->unknown)
+									panic("clone produced a known thread");
+								unkth->unknown = false;
+								try
+								{
+									if(!unkth->ptrace_resume(PTRACE_SYSCALL))
+										panic_errno("ptrace SYSCALL");
+								}
+								catch(const ThreadGone &e)
+								{}
+							}
+							if(event == PTRACE_EVENT_CLONE)
+								th->on_clone(*this, newtid);
+							else if(event == PTRACE_EVENT_FORK)
+								th->on_fork(*this, newtid);
+							else
+								th->on_vfork(*this, newtid);
+						}
+						else if(event == PTRACE_EVENT_EXEC)
+						{
+							th->on_exec(*this);
+						}
+						else
+						{
+							fprintf(stderr, "%d Unknown event %d\n", tid, event);
+						}
+						if(!th->ptrace_resume(PTRACE_SYSCALL))
+							panic_errno("ptrace SYSCALL");
+						th->suppress_stop = false;
+					}
+					else if(WSTOPSIG(status) == SIGSTOP && th->suppress_stop)
+					{
+						if(!th->ptrace_resume(PTRACE_SYSCALL))
+							panic_errno("ptrace SYSCALL");
+						th->suppress_stop = false;
+					}
+					else
+					{
+						if(!th->ptrace_resume(PTRACE_SYSCALL, th->on_kill(*this, status)))
+							panic_errno("ptrace SYSCALL");
+					}
+				}
+			}
+			catch(const ThreadGone &e)
+			{
+				continue;
+			}
+		}
+	}
+}
