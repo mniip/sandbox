@@ -12,6 +12,7 @@ extern "C" {
 
 #include <sys/wait.h>
 #include <sys/signal.h>
+#include <sys/uio.h>
 }
 
 class ThreadGone: public std::runtime_error
@@ -48,6 +49,9 @@ public:
 	bool ptrace_geteventmsg(unsigned long &);
 	bool ptrace_resume(int, int signal = 0);
 	bool ptrace_getsiginfo(siginfo_t &);
+	bool ptrace_peekdata(void *, long &word);
+	bool ptrace_getregset(int, struct iovec &);
+	bool ptrace_setregset(int, struct iovec &);
 
 	void set_options();
 };
@@ -59,14 +63,15 @@ template<typename T> class Thread: public ThreadData
 public:
 	inline Thread(pid_t tid): ThreadData(tid) {}
 
-	virtual inline void on_syscall_entry(Sandbox<T>) {};
-	virtual inline void on_syscall_exit(Sandbox<T>) {};
-	virtual inline void on_fork(Sandbox<T>, pid_t) {};
-	virtual inline void on_vfork(Sandbox<T>, pid_t) {};
-	virtual inline void on_clone(Sandbox<T>, pid_t) {};
-	virtual inline void on_exec(Sandbox<T>) {};
-	virtual inline void on_exit(Sandbox<T>, int) {};
-	virtual inline int on_kill(Sandbox<T>, int status) { return WSTOPSIG(status); };
+	virtual inline void on_syscall_entry(Sandbox<T> &) {};
+	virtual inline void on_syscall_exit(Sandbox<T> &) {};
+	virtual inline void on_fork(Sandbox<T> &, pid_t) {};
+	virtual inline void on_vfork(Sandbox<T> &, pid_t) {};
+	virtual inline void on_clone(Sandbox<T> &, pid_t) {};
+	virtual inline void on_exec(Sandbox<T> &) {};
+	virtual inline void on_exit(Sandbox<T> &, int) {};
+	virtual inline int on_kill(Sandbox<T> &, int status) { return WSTOPSIG(status); };
+	virtual inline void on_stop(Sandbox<T> &, int) {};
 };
 
 template<typename T> class Sandbox
@@ -78,7 +83,7 @@ public:
 	typename std::list<T>::iterator find_tid(pid_t);
 
 	void event_loop();
-	pid_t spawn_process(char const *, int, char const *const *);
+	pid_t spawn_process(char const *, int, char const *const *, void (*)());
 	static bool ptrace_traceme();
 };
 

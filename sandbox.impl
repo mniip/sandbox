@@ -40,7 +40,7 @@ template<typename T> bool Sandbox<T>::ptrace_traceme()
 	return true;
 }
 
-template<typename T> pid_t Sandbox<T>::spawn_process(char const *path, int argc, char const *const *argv)
+template<typename T> pid_t Sandbox<T>::spawn_process(char const *path, int argc, char const *const *argv, void (*hook)())
 {
 	char const **args = new char const *[argc + 1];
 	for(int i = 0; i < argc; i++)
@@ -53,6 +53,8 @@ template<typename T> pid_t Sandbox<T>::spawn_process(char const *path, int argc,
 	{
 		if(!ptrace_traceme())
 			panic_errno("ptrace TRACEME");
+		if(hook)
+			hook();
 		execvp(path, (char **)args);
 		panic_errno("execvp");
 	}
@@ -73,7 +75,11 @@ template<typename T> void Sandbox<T>::event_loop()
 		int status;
 		pid_t tid = wait(&status);
 		if(tid < 0)
+		{
+			if(errno == ECHILD)
+				break;
 			panic_errno("wait");
+		}
 		typename std::list<T>::iterator th = find_tid(tid);
 		if(th == threads.end())
 		{
@@ -84,7 +90,7 @@ template<typename T> void Sandbox<T>::event_loop()
 			}
 			else
 			{
-				panic("Got unexpected notification for thread");
+				panic("Got unexpected notification for thread tid");
 			}
 		}
 		else
@@ -96,21 +102,27 @@ template<typename T> void Sandbox<T>::event_loop()
 				th->set_options();
 				if(WIFEXITED(status))
 				{
-					th->on_exit(*this, status);
+					try { th->on_exit(*this, status); }
+					catch(const ThreadGone &e)
+					{}
 					threads.erase(th);
 				}
 				else if(WIFSIGNALED(status))
 				{
-					th->on_exit(*this, status);
+					try { th->on_exit(*this, status); }
+					catch(const ThreadGone &e)
+					{}
 					threads.erase(th);
 				}
 				else if(WIFSTOPPED(status))
 				{
 					siginfo_t info;
+					info.si_code = 123;
 					if(!th->ptrace_getsiginfo(info))
-						if(errno == EINVAL)
+						if(errno != EINVAL)
 							panic_errno("ptrace GETSIGINFO");
-					if(WSTOPSIG(status) == SIGTRAP && (errno == EINVAL || th->suppress_stop || (info.si_code & 0xFF) == SIGTRAP))
+					bool group_stop = !!errno;
+					if(WSTOPSIG(status) == SIGTRAP && !errno && (th->suppress_stop || (info.si_code & 0xFF) == SIGTRAP))
 					{
 						int event = status >> 16;
 						if(!event)
@@ -118,12 +130,22 @@ template<typename T> void Sandbox<T>::event_loop()
 							if(th->had_syscall_entry)
 							{
 								th->had_syscall_entry = false;
-								th->on_syscall_exit(*this);
+								try { th->on_syscall_exit(*this); }
+								catch(const ThreadGone &e)
+								{
+									if(e.tid == tid)
+										throw;
+								}
 							}
 							else
 							{
 								th->had_syscall_entry = true;
-								th->on_syscall_entry(*this);
+								try { th->on_syscall_entry(*this); }
+								catch(const ThreadGone &e)
+								{
+									if(e.tid == tid)
+										throw;
+								}
 							}
 						}
 						else if(event == PTRACE_EVENT_CLONE || event == PTRACE_EVENT_FORK || event == PTRACE_EVENT_VFORK)
@@ -150,16 +172,29 @@ template<typename T> void Sandbox<T>::event_loop()
 								catch(const ThreadGone &e)
 								{}
 							}
-							if(event == PTRACE_EVENT_CLONE)
-								th->on_clone(*this, newtid);
-							else if(event == PTRACE_EVENT_FORK)
-								th->on_fork(*this, newtid);
-							else
-								th->on_vfork(*this, newtid);
+							try
+							{
+								if(event == PTRACE_EVENT_CLONE)
+									th->on_clone(*this, newtid);
+								else if(event == PTRACE_EVENT_FORK)
+									th->on_fork(*this, newtid);
+								else
+									th->on_vfork(*this, newtid);
+							}
+							catch(const ThreadGone &e)
+							{
+								if(e.tid == tid)
+									throw;
+							}
 						}
 						else if(event == PTRACE_EVENT_EXEC)
 						{
-							th->on_exec(*this);
+							try { th->on_exec(*this); }
+							catch(const ThreadGone &e)
+							{
+								if(e.tid == tid)
+									throw;
+							}
 						}
 						else
 						{
@@ -177,8 +212,25 @@ template<typename T> void Sandbox<T>::event_loop()
 					}
 					else
 					{
-						if(!th->ptrace_resume(PTRACE_SYSCALL, th->on_kill(*this, status)))
-							panic_errno("ptrace SYSCALL");
+						try
+						{
+							if(group_stop)
+							{
+								th->on_stop(*this, status);
+								if(!th->ptrace_resume(PTRACE_LISTEN))
+									panic_errno("ptrace LISTEN");
+							}
+							else
+							{
+								if(!th->ptrace_resume(PTRACE_SYSCALL, th->on_kill(*this, status)))
+									panic_errno("ptrace SYSCALL");
+							}
+						}
+						catch(const ThreadGone &e)
+						{
+							if(e.tid == tid)
+								throw;
+						}
 					}
 				}
 			}

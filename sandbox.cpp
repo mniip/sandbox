@@ -16,6 +16,7 @@ extern "C" {
 #include <sys/wait.h>
 #include <sys/ptrace.h>
 #include <sys/user.h>
+#include <sys/uio.h>
 }
 
 void panic(std::string s)
@@ -57,6 +58,23 @@ bool ThreadData::ptrace_resume(int resume, int signal)
 bool ThreadData::ptrace_getsiginfo(siginfo_t &info)
 {
 	return !ptrace(PTRACE_GETSIGINFO, NULL, &info);
+}
+
+bool ThreadData::ptrace_peekdata(void *addr, long &word)
+{
+	errno = 0;
+	word = ptrace(PTRACE_PEEKDATA, addr, NULL);
+	return errno == 0;
+}
+
+bool ThreadData::ptrace_getregset(int set, struct iovec &iov)
+{
+	return !ptrace(PTRACE_GETREGSET, (void *)(intptr_t)set, (void *)&iov);
+}
+
+bool ThreadData::ptrace_setregset(int set, struct iovec &iov)
+{
+	return !ptrace(PTRACE_SETREGSET, (void *)(intptr_t)set, (void *)&iov);
 }
 
 void ThreadData::set_options()
