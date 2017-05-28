@@ -6,6 +6,7 @@
 #include "sandbox.h"
 #include "path.h"
 #include "arch.h"
+#include "wakeup.h"
 
 extern "C" {
 #include <stdio.h>
@@ -45,6 +46,8 @@ public:
 			return block(i, -ENOSYS);
 		switch(i.sysnum())
 		{
+		case WAKE_MAGIC:
+			return do_wakeup();
 		case __NR_read:
 		case __NR_write:
 		case __NR_close:

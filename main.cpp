@@ -5,6 +5,7 @@
 #include "sandbox.h"
 #include "path.h"
 #include "fs.h"
+#include "wakeup.h"
 
 extern "C" {
 #include <stdio.h>
@@ -71,6 +72,14 @@ public:
 
 void set_limits()
 {
+	dup2(in_pipe[0], 0);
+	dup2(out_pipe[1], 1);
+	dup2(out_pipe[1], 2);
+	close(in_pipe[0]);
+	close(in_pipe[1]);
+	close(out_pipe[0]);
+	close(out_pipe[1]);
+
 	setenv("LD_LIBRARY_PATH", "/var/lib/xsbot/sandbox/root/lib:/var/lib/xsbot/sandbox/usr/lib", 1);
 	setenv("PATH", "/var/lib/xsbot/sandbox/root/bin", 1);
 	setenv("SHELL", "/var/lib/xsbot/sandbox/root/bin/sh", 1);
@@ -84,20 +93,46 @@ void set_limits()
 	setrlimit(RLIMIT_CPU, &limit);
 }
 
-void time_limit(Sandbox<TracedThread> *s)
+void detach(int sig)
 {
-	sleep(5);
-	printf("[Timed out]\n");
+	printf("[Detached]\n");
 	exit(0);
+}
+
+void ignore(int sig)
+{
 }
 
 int main(int argc, char **argv)
 {
-	Sandbox<TracedThread> s;
-	main_process = s.spawn_process(argv[1], argc - 1, argv + 1, set_limits);
-	std::thread limit(time_limit, &s);
-	s.event_loop();
-	exit(0);
+	ident = argv[1];
+	try_connect();
+
+	signal(SIGUSR1, ignore);
+
+	int pid = fork();
+	if(pid < 0)
+		panic_errno("fork");
+
+	if(!pid)
+	{
+		Sandbox<TracedThread> s;
+		if(pipe(in_pipe))
+			panic_errno("pipe");
+		if(pipe(out_pipe))
+			panic_errno("pipe");
+		main_process = s.spawn_process(argv[2], argc - 2, argv + 2, set_limits);
+		close(in_pipe[0]);
+		close(out_pipe[1]);
+		feed_in = new std::thread(feed_data, fileno(stdin), in_pipe[1]);
+		feed_out = new std::thread(feed_data, out_pipe[0], fileno(stdout));
+		set_timer();
+		s.event_loop();
+		exit(0);
+	}
+	else
+	{
+		signal(SIGUSR1, detach);
+		wait(NULL);
+	}
 }
-
-

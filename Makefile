@@ -5,7 +5,7 @@ CFLAGS= -O0 -ggdb -std=c++11
 CPPFLAGS=
 LDFLAGS= -lpthread
 
-OBJS= main.o sandbox.o path.o
+OBJS= main.o sandbox.o path.o wakeup.o
 
 all: sandbox
 
@@ -18,7 +18,7 @@ sandbox: $(OBJS)
 %.o: %.cpp
 	$(CXX) -c -o $@ $< $(CFLAGS) $(CPPFLAGS)
 
-main.o: arch.h sandbox.h sandbox.impl fs.h
+main.o: arch.h sandbox.h sandbox.impl fs.h wakeup.h
 
 arch.h:
 	echo '#define ARCH $(ARCH)' > $@
