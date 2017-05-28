@@ -19,6 +19,7 @@ extern "C" {
 char const *allowed_paths[] =
 {
 	"/var/lib/xsbot/sandbox/root",
+	"/usr/lib/tcc/libtcc1.a",
 	"/proc/self",
 	"/bin/sh",
 	"/dev/null",
@@ -70,12 +71,12 @@ public:
 
 void set_limits()
 {
-	setenv("LD_LIBRARY_PATH", "/var/lib/xsbot/sandbox/root/lib", 1);
+	setenv("LD_LIBRARY_PATH", "/var/lib/xsbot/sandbox/root/lib:/var/lib/xsbot/sandbox/usr/lib", 1);
 	setenv("PATH", "/var/lib/xsbot/sandbox/root/bin", 1);
 	setenv("SHELL", "/var/lib/xsbot/sandbox/root/bin/sh", 1);
 	chdir("/var/lib/xsbot/sandbox/root/data");
 	struct rlimit limit;
-	limit.rlim_max = limit.rlim_cur = 512 * 1024 * 1024;
+	limit.rlim_max = limit.rlim_cur = 1024 * 1024 * 1024;
 	setrlimit(RLIMIT_AS, &limit);
 	limit.rlim_max = limit.rlim_cur = 0;
 	setrlimit(RLIMIT_CORE, &limit);

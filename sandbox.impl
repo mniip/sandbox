@@ -73,7 +73,7 @@ template<typename T> void Sandbox<T>::event_loop()
 	while(threads.size())
 	{
 		int status;
-		pid_t tid = wait(&status);
+		pid_t tid = waitpid(-1, &status, __WALL);
 		if(tid < 0)
 		{
 			if(errno == ECHILD)

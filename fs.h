@@ -155,6 +155,9 @@ public:
 		case __NR_epoll_create1:
 		case __NR_splice:
 		case __NR_tee:
+		case __NR_timerfd_create:
+		case __NR_timerfd_settime:
+		case __NR_timerfd_gettime:
 		case __NR_dup3:
 		case __NR_pipe2:
 		case __NR_preadv:
@@ -205,6 +208,7 @@ public:
 				return;
 			}
 		case __NR_futimesat:
+		case __NR_utimensat:
 		case __NR_newfstatat:
 		case __NR_readlinkat:
 		case __NR_faccessat:
@@ -404,12 +408,8 @@ public:
 		//case __NR_sync_file_range:
 		//case __NR_vmsplice:
 		//case __NR_move_pages:
-		//case __NR_utimensat:
 		//case __NR_signalfd:
-		//case __NR_timerfd_create:
 		//case __NR_fallocate:
-		//case __NR_timerfd_settime:
-		//case __NR_timerfd_gettime:
 		//case __NR_accept4:
 		//case __NR_signalfd4:
 		//case __NR_inotify_init1:
