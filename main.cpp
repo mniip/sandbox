@@ -22,7 +22,7 @@ char const *allowed_paths[] =
 	"/var/lib/xsbot/sandbox/root",
 	"/usr/lib/tcc/libtcc1.a",
 	"/proc/self",
-	"/bin/sh",
+	"/bin/dash",
 	"/dev/null",
 	"/dev/zero",
 	"/dev/urandom",

@@ -84,7 +84,7 @@ std::string canon_path_at(pid_t tid, int fd, std::string path)
 				real.erase(real.rfind('/'), std::string::npos);
 		}
 		std::string link;
-		if(read_link(real, link))
+		if(real != "/proc/self" && read_link(real, link))
 		{
 			if(*link.begin() == '/')
 				real = link;
