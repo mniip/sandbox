@@ -71,14 +71,32 @@ std::string canon_path_at(pid_t tid, int fd, std::string path)
 	std::stringstream s(path);
 	std::string segment;
 	while(std::getline(s, segment, '/'))
+	{
 		if(segment != "" && segment != ".")
 		{
 			if(segment != "..")
-				real += "/" + segment;
+			{
+				if(*real.rbegin() != '/')
+					real += "/";
+				real += segment;
+			}
 			else
 				real.erase(real.rfind('/'), std::string::npos);
 		}
-	if(*path.rbegin() == '/')
+		std::string link;
+		if(read_link(real, link))
+		{
+			if(*link.begin() == '/')
+				real = link;
+			else
+			{
+				real.erase(real.rfind('/'), std::string::npos);
+				real += "/" + link;
+			}
+			real = canon_path_at(tid, fd, real);
+		}
+	}
+	if(*path.rbegin() == '/' && *real.rbegin() != '/')
 		real += "/";
 	return real;
 }
