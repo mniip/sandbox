@@ -81,7 +81,10 @@ std::string canon_path_at(pid_t tid, int fd, std::string path)
 				real += segment;
 			}
 			else
-				real.erase(real.rfind('/'), std::string::npos);
+				if(real.rfind('/') == std::string::npos)
+					real = "";
+				else
+					real.erase(real.rfind('/'), std::string::npos);
 		}
 		std::string link;
 		if(real != "/proc/self" && read_link(real, link))
@@ -89,10 +92,13 @@ std::string canon_path_at(pid_t tid, int fd, std::string path)
 			if(*link.begin() == '/')
 				real = link;
 			else
-			{
-				real.erase(real.rfind('/'), std::string::npos);
-				real += "/" + link;
-			}
+				if(real.rfind('/') == std::string::npos)
+					real = link;
+				else
+				{
+					real.erase(real.rfind('/'), std::string::npos);
+					real += "/" + link;
+				}
 			real = canon_path_at(tid, fd, real);
 		}
 	}
