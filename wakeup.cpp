@@ -78,7 +78,12 @@ void do_wakeup()
 	if(old_client != -1)
 		close(old_client);
 	else
+	{
 		kill(getppid(), SIGUSR1);
+		close(fileno(stdin));
+		close(fileno(stdout));
+		close(fileno(stderr));
+	}
 	unset_timer();
 
 	int server = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -126,6 +131,7 @@ void try_connect()
 	}
 
 	printf("[Attached]\n");
+	fflush(NULL);
 
 	std::thread feed_in(feed_data, fileno(stdin), server);
 	feed_data(server, fileno(stdout));
