@@ -130,9 +130,6 @@ void try_connect()
 		return;
 	}
 
-	printf("[Attached]\n");
-	fflush(NULL);
-
 	std::thread feed_in(feed_data, fileno(stdin), server);
 	feed_data(server, fileno(stdout));
 	exit(0);

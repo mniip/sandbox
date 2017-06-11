@@ -95,7 +95,6 @@ void set_limits()
 
 void detach(int sig)
 {
-	printf("[Detached]\n");
 	exit(0);
 }
 
