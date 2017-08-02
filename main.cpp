@@ -11,6 +11,7 @@ extern "C" {
 #include <fcntl.h>
 #include <syscall.h>
 #include <signal.h>
+#include <dirent.h>
 
 #include <sys/resource.h>
 #include <sys/wait.h>
@@ -75,6 +76,18 @@ void set_limits()
 	setenv("PATH", "/var/lib/xsbot/sandbox/root/bin", 1);
 	setenv("SHELL", "/var/lib/xsbot/sandbox/root/bin/sh", 1);
 	chdir("/var/lib/xsbot/sandbox/root/data");
+
+	DIR *fds = opendir("/proc/self/fd/");
+	if(fds)
+	{
+		struct dirent *dent;
+		while(dent = readdir(fds))
+			if(atoi(dent->d_name) > 2)
+				close(atoi(dent->d_name));
+		closedir(fds);
+	}
+	fflush(stdout);
+
 	struct rlimit limit;
 	limit.rlim_max = limit.rlim_cur = 1024 * 1024 * 1024;
 	setrlimit(RLIMIT_AS, &limit);
