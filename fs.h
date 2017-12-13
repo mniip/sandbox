@@ -518,6 +518,7 @@ public:
 			i.save();
 			ret_override = false;
 		}
+		check_startup();
 	}
 };
 

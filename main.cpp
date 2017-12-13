@@ -135,9 +135,8 @@ int main(int argc, char **argv)
 		main_process = s.spawn_process(argv[2], argc - 2, argv + 2, set_limits);
 		close(in_pipe[0]);
 		close(out_pipe[1]);
-		feed_in = new std::thread(feed_data, fileno(stdin), in_pipe[1]);
-		feed_out = new std::thread(feed_data, out_pipe[0], fileno(stdout));
-		set_timer();
+		feed_in = new std::thread(feed_data, fileno(stdin), in_pipe[1], true);
+		feed_out = new std::thread(feed_data, out_pipe[0], fileno(stdout), false);
 		s.event_loop();
 		exit(0);
 	}

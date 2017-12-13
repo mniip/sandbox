@@ -10,8 +10,9 @@ extern int in_pipe[2], out_pipe[2];
 
 extern std::thread *feed_in, *feed_out;
 
+void check_startup();
 void do_wakeup();
-void feed_data(int, int);
+void feed_data(int, int, bool);
 void try_connect();
 void set_timer();
 

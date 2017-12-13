@@ -8,6 +8,7 @@ extern "C" {
 #include <fcntl.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <sys/ioctl.h>
 #include <pthread.h>
 }
 
@@ -18,7 +19,10 @@ int old_client = -1;
 
 std::thread *feed_in, *feed_out;
 
-void feed_data(int from, int to)
+bool startup_over = false;
+int written = 0;
+
+void feed_data(int from, int to, bool track)
 {
 	const size_t BLOCK_SIZE = 4096;
 	char buffer[BLOCK_SIZE];
@@ -35,6 +39,8 @@ void feed_data(int from, int to)
 				exit(0);
 			}
 			done += bytes_wrote;
+			if(track)
+				written += bytes_wrote;
 		}
 	}
 	if(bytes_read < 0 && errno != EAGAIN)
@@ -107,8 +113,8 @@ void do_wakeup()
 	close(server);
 	unlink(("socket_" + std::string(ident)).c_str());
 
-	feed_in = new std::thread(feed_data, client, in_pipe[1]);
-	feed_out = new std::thread(feed_data, out_pipe[0], client);
+	feed_in = new std::thread(feed_data, client, in_pipe[1], false);
+	feed_out = new std::thread(feed_data, out_pipe[0], client, false);
 
 	old_client = client;
 	set_timer();
@@ -130,7 +136,22 @@ void try_connect()
 		return;
 	}
 
-	std::thread feed_in(feed_data, fileno(stdin), server);
-	feed_data(server, fileno(stdout));
+	std::thread feed_in(feed_data, fileno(stdin), server, false);
+	feed_data(server, fileno(stdout), false);
 	exit(0);
+}
+
+void check_startup()
+{
+	if(!startup_over)
+	{
+		int buffer;
+		if(ioctl(in_pipe[1], FIONREAD, &buffer))
+			panic_errno("FIONREAD");
+		if(buffer - written < 0)
+		{
+			startup_over = true;
+			set_timer();
+		}
+	}
 }
