@@ -14,6 +14,7 @@ void check_startup();
 void do_wakeup();
 void feed_data(int, int, bool);
 void try_connect();
+void kill_session();
 void set_timer();
 
 #endif

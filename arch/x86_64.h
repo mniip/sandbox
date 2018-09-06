@@ -86,6 +86,7 @@ public:
 				case 6: return regs.r9;
 			}
 	}
+	virtual inline uint64_t &stack() { return regs.rsp; }
 
     bool save()
     {

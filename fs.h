@@ -2,6 +2,7 @@
 #define FS_H
 
 #include <string>
+#include <vector>
 
 #include "sandbox.h"
 #include "path.h"
@@ -27,6 +28,9 @@ public:
 	bool ret_override;
 	long ret_val;
 
+	long restore_addr;
+	std::vector<uint8_t> restore_data;
+
 	void block(SyscallInfo &i, long val)
 	{
 		i.sysnum() = -1;
@@ -35,9 +39,12 @@ public:
 		ret_val = val;
 	}
 
-	virtual bool can_see_path(std::string path, int at = AT_FDCWD) { return true; }
-	virtual bool can_write_path(std::string path, int at = AT_FDCWD) { return true; }
+	virtual bool can_see_path(std::string path, int at, int &error) { return true; }
+	virtual bool can_write_path(std::string path, int at, int &error) { return true; }
 	virtual bool can_create_thread(Sandbox<T> &s) { return true; }
+	virtual bool should_replace_path(std::string path, std::string &newpath, int at = AT_FDCWD, int flags = 0) { return false; }
+	virtual bool should_replace_stat(std::string path, struct stat &st, int at = AT_FDCWD, int flags = 0) { return false; }
+	virtual void after_replace_path(bool success) { }
 
 	virtual void on_syscall_entry(Sandbox<T> &s)
 	{
@@ -51,7 +58,6 @@ public:
 		case __NR_read:
 		case __NR_write:
 		case __NR_close:
-		case __NR_fstat:
 		case __NR_poll:
 		case __NR_lseek:
 		case __NR_mmap:
@@ -171,30 +177,107 @@ public:
 			return;
 		case __NR_open:
 			{
-				std::string path = i.fetch_cstr((void *)i.arg(1));
-				if(*path.rbegin())
+				std::string path;
+				if(!i.fetch_cstr((void *)i.arg(1), path))
 					return block(i, -EBADF);
-				if(!can_see_path(path))
-					return block(i, -ENOENT);
-				if((i.arg(2) & O_ACCMODE) != O_RDONLY && !can_write_path(path))
-					return block(i, -EPERM);
+				int error = -ENOENT;
+				if(!can_see_path(path, AT_FDCWD, error))
+					return block(i, error);
+				error = -EPERM;
+				if((i.arg(2) & O_ACCMODE) != O_RDONLY && !can_write_path(path, AT_FDCWD, error))
+					return block(i, error);
+
+				std::string newpath;
+				if(should_replace_path(path, newpath, i.arg(2)))
+				{
+					size_t size = newpath.size() + 1;
+					restore_addr = i.stack() - size;
+					std::vector<uint8_t> replaced = i.fetch_array((void *)(uintptr_t)restore_addr, size);
+					if(replaced.size() != size)
+					{
+						after_replace_path(false);
+						return block(i, -EBADF);
+					}
+					restore_data = replaced;
+					if(!i.emplace_array((void *)(uintptr_t)restore_addr, std::vector<uint8_t>(newpath.c_str(), newpath.c_str() + size)))
+					{
+						after_replace_path(false);
+						i.emplace_array((void *)(uintptr_t)restore_addr, restore_data);
+						restore_data.clear();
+						return block(i, -EBADF);
+					}
+					i.arg(1) = restore_addr;
+					i.save();
+				}
 				return;
 			}
 		case __NR_openat:
 			{
 				int at = i.arg(1);
-				std::string path = i.fetch_cstr((void *)i.arg(2));
-				if(*path.rbegin())
+				std::string path;
+				if(!i.fetch_cstr((void *)i.arg(2), path))
 					return block(i, -EBADF);
-				if(!can_see_path(path, at))
-					return block(i, -ENOENT);
-				if((i.arg(2) & O_ACCMODE) != O_RDONLY && !can_write_path(path, at))
-					return block(i, -EPERM);
+				int error = -ENOENT;
+				if(!can_see_path(path, at, error))
+					return block(i, error);
+				error = -EPERM;
+				if((i.arg(3) & O_ACCMODE) != O_RDONLY && !can_write_path(path, at, error))
+					return block(i, error);
+
+				std::string newpath;
+				if(should_replace_path(path, newpath, at, i.arg(3)))
+				{
+					size_t size = newpath.size() + 1;
+					restore_addr = i.stack() - size;
+					std::vector<uint8_t> replaced = i.fetch_array((void *)(uintptr_t)restore_addr, size);
+					if(replaced.size() != size)
+					{
+						after_replace_path(false);
+						return block(i, -EBADF);
+					}
+					restore_data = replaced;
+					if(!i.emplace_array((void *)(uintptr_t)restore_addr, std::vector<uint8_t>(newpath.c_str(), newpath.c_str() + size)))
+					{
+						after_replace_path(false);
+						i.emplace_array((void *)(uintptr_t)restore_addr, restore_data);
+						restore_data.clear();
+						return block(i, -EBADF);
+					}
+					i.arg(2) = restore_addr;
+					i.save();
+				}
+				return;
+			}
+		case __NR_fstat:
+			{
+				struct stat st;
+				if(should_replace_stat("", st, i.arg(1), AT_EMPTY_PATH))
+				{
+					if(!i.emplace_array((void *)i.arg(2), std::vector<uint8_t>((char *)&st, (char *)&st + sizeof st)))
+						return;
+					return block(i, 0);
+				}
+				return;
+			}
+		case __NR_stat:
+		case __NR_lstat:
+			{
+				std::string path;
+				if(!i.fetch_cstr((void *)i.arg(1), path))
+					return block(i, -EBADF);
+				int error = -ENOENT;
+				if(!can_see_path(path, AT_FDCWD, error))
+					return block(i, error);
+				struct stat st;
+				if(should_replace_stat(path, st, i.arg(1), i.sysnum() == __NR_lstat ? AT_SYMLINK_NOFOLLOW : 0))
+				{
+					if(!i.emplace_array((void *)i.arg(2), std::vector<uint8_t>((char *)&st, (char *)&st + sizeof st)))
+						return;
+					return block(i, 0);
+				}
 				return;
 			}
 		case __NR_execve:
-		case __NR_stat:
-		case __NR_lstat:
 		case __NR_access:
 		case __NR_chdir:
 		case __NR_readlink:
@@ -203,26 +286,45 @@ public:
 		case __NR_statfs:
 		case __NR_utimes:
 			{
-				std::string path = i.fetch_cstr((void *)i.arg(1));
-				if(*path.rbegin())
+				std::string path;
+				if(!i.fetch_cstr((void *)i.arg(1), path))
 					return block(i, -EBADF);
-				if(!can_see_path(path))
-					return block(i, -ENOENT);
+				int error = -ENOENT;
+				if(!can_see_path(path, AT_FDCWD, error))
+					return block(i, error);
+				return;
+			}
+		case __NR_newfstatat:
+			{
+				int at = i.arg(1);
+				std::string path;
+				if(!i.fetch_cstr((void *)i.arg(2), path))
+					return block(i, -EBADF);
+				int error = -ENOENT;
+				if(!can_see_path(path, at, error))
+					return block(i, error);
+				struct stat st;
+				if(should_replace_stat(path, st, at, i.arg(4)))
+				{
+					if(!i.emplace_array((void *)i.arg(2), std::vector<uint8_t>((char *)&st, (char *)&st + sizeof st)))
+						return;
+					return block(i, 0);
+				}
 				return;
 			}
 		case __NR_futimesat:
 		case __NR_utimensat:
-		case __NR_newfstatat:
 		case __NR_readlinkat:
 		case __NR_faccessat:
 		//case __NR_execveat:
 			{
 				int at = i.arg(1);
-				std::string path = i.fetch_cstr((void *)i.arg(2));
-				if(*path.rbegin())
+				std::string path;
+				if(!i.fetch_cstr((void *)i.arg(2), path))
 					return block(i, -EBADF);
-				if(!can_see_path(path, at))
-					return block(i, -ENOENT);
+				int error = -ENOENT;
+				if(!can_see_path(path, AT_FDCWD, error))
+					return block(i, error);
 				return;
 			}
 		case __NR_truncate:
@@ -234,11 +336,12 @@ public:
 		case __NR_chown:
 		case __NR_lchown:
 			{
-				std::string path = i.fetch_cstr((void *)i.arg(1));
-				if(*path.rbegin())
+				std::string path;
+				if(!i.fetch_cstr((void *)i.arg(1), path))
 					return block(i, -EBADF);
-				if(!can_write_path(path))
-					return block(i, -EPERM);
+				int error = -EPERM;
+				if(!can_write_path(path, AT_FDCWD, error))
+					return block(i, error);
 				return;
 			}
 		case __NR_mkdirat:
@@ -247,74 +350,79 @@ public:
 		case __NR_fchmodat:
 			{
 				int at = i.arg(1);
-				std::string path = i.fetch_cstr((void *)i.arg(2));
-				if(*path.rbegin())
+				std::string path;
+				if(!i.fetch_cstr((void *)i.arg(2), path))
 					return block(i, -EBADF);
-				if(!can_write_path(path, at))
-					return block(i, -EPERM);
+				int error = -EPERM;
+				if(!can_write_path(path, at, error))
+					return block(i, error);
 				return;
 			}
 		case __NR_link:
 		case __NR_symlink:
 			{
-				std::string path1 = i.fetch_cstr((void *)i.arg(1));
-				if(*path1.rbegin())
+				std::string path1, path2;
+				if(!i.fetch_cstr((void *)i.arg(1), path1))
 					return block(i, -EBADF);
-				if(!can_see_path(path1))
-					return block(i, -ENOENT);
-				std::string path2 = i.fetch_cstr((void *)i.arg(2));
-				if(*path2.rbegin())
+				int error = -ENOENT;
+				if(!can_see_path(path1, AT_FDCWD, error))
+					return block(i, error);
+				if(!i.fetch_cstr((void *)i.arg(2), path2))
 					return block(i, -EBADF);
-				if(!can_write_path(path2))
-					return block(i, -EPERM);
+				error = -EPERM;
+				if(!can_write_path(path2, AT_FDCWD, error))
+					return block(i, error);
 				return;
 			}
 		case __NR_rename:
 			{
-				std::string path1 = i.fetch_cstr((void *)i.arg(1));
-				if(*path1.rbegin())
+				std::string path1, path2;
+				if(!i.fetch_cstr((void *)i.arg(1), path1))
 					return block(i, -EBADF);
-				if(!can_write_path(path1))
-					return block(i, -EPERM);
-				std::string path2 = i.fetch_cstr((void *)i.arg(2));
-				if(*path2.rbegin())
+				int error = -EPERM;
+				if(!can_write_path(path1, AT_FDCWD, error))
+					return block(i, error);
+				if(!i.fetch_cstr((void *)i.arg(2), path2))
 					return block(i, -EBADF);
-				if(!can_write_path(path2))
-					return block(i, -EPERM);
+				error = -EPERM;
+				if(!can_write_path(path2, AT_FDCWD, error))
+					return block(i, error);
 				return;
 			}
 		case __NR_linkat:
 		case __NR_symlinkat:
 			{
+				std::string path1, path2;
 				int at1 = i.arg(1);
-				std::string path1 = i.fetch_cstr((void *)i.arg(2));
-				if(*path1.rbegin())
+				if(!i.fetch_cstr((void *)i.arg(2), path1))
 					return block(i, -EBADF);
-				if(!can_see_path(path1, at1))
-					return block(i, -ENOENT);
+				int error = -ENOENT;
+				if(!can_see_path(path1, at1, error))
+					return block(i, error);
 				int at2 = i.arg(3);
-				std::string path2 = i.fetch_cstr((void *)i.arg(4));
-				if(*path2.rbegin())
+				if(!i.fetch_cstr((void *)i.arg(4), path2))
 					return block(i, -EBADF);
-				if(!can_write_path(path2, at2))
-					return block(i, -EPERM);
+				error = -EPERM;
+				if(!can_write_path(path2, at2, error))
+					return block(i, error);
 				return;
 			}
 		case __NR_renameat:
 		case __NR_renameat2:
 			{
+				std::string path1, path2;
 				int at1 = i.arg(1);
-				std::string path1 = i.fetch_cstr((void *)i.arg(2));
-				if(*path1.rbegin())
+				if(!i.fetch_cstr((void *)i.arg(2), path1))
 					return block(i, -EBADF);
-				if(!can_see_path(path1, at1))
-					return block(i, -EPERM);
+				int error = -ENOENT;
+				if(!can_see_path(path1, at1, error))
+					return block(i, error);
 				int at2 = i.arg(3);
-				std::string path2 = i.fetch_cstr((void *)i.arg(4));
-				if(*path2.rbegin())
+				if(!i.fetch_cstr((void *)i.arg(4), path2))
 					return block(i, -EBADF);
-				if(!can_write_path(path2, at2))
-					return block(i, -EPERM);
+				error = -EPERM;
+				if(!can_write_path(path2, at2, error))
+					return block(i, error);
 				return;
 			}
 		case __NR_clone:
@@ -512,6 +620,12 @@ public:
 	virtual void on_syscall_exit(Sandbox<T> &s)
 	{
 		SyscallInfo i(*this);
+		if(restore_data.size())
+		{
+			i.emplace_array((void *)(uintptr_t)restore_addr, restore_data);
+			restore_data.clear();
+			after_replace_path(true);
+		}
 		if(ret_override)
 		{
 			i.ret() = ret_val;

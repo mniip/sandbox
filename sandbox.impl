@@ -1,5 +1,6 @@
 #include <list>
 #include <string>
+#include <algorithm>
 #include <stdexcept>
 
 #include "sandbox.h"
@@ -80,6 +81,14 @@ template<typename T> void Sandbox<T>::event_loop()
 				break;
 			panic_errno("wait");
 		}
+		
+		typename std::list<pid_t>::iterator ign = std::find(ignore_once.begin(), ignore_once.end(), tid);
+		if(ign != ignore_once.end())
+		{
+			ignore_once.erase(ign);
+			continue;
+		}
+
 		typename std::list<T>::iterator th = find_tid(tid);
 		if(th == threads.end())
 		{

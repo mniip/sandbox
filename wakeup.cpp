@@ -141,6 +141,36 @@ void try_connect()
 	exit(0);
 }
 
+void kill_session()
+{
+	int server = socket(AF_UNIX, SOCK_STREAM, 0);
+	if(server < 0)
+		panic_errno("socket");
+	
+	struct sockaddr_un addr;
+	memset(&addr, 0, sizeof addr);
+	addr.sun_family = AF_UNIX;
+	strncpy(addr.sun_path, ("socket_" + std::string(ident)).c_str(), sizeof addr.sun_path - 1);
+	if(connect(server, (struct sockaddr *)&addr, sizeof addr))
+	{
+		if(errno == ENOENT)
+			return;
+		int err = errno;
+		unlink(("socket_" + std::string(ident)).c_str());
+		errno = err;
+		panic_errno("connect");
+	}
+
+	unlink(("socket_" + std::string(ident)).c_str());
+
+	struct ucred creds;
+	socklen_t len = sizeof creds;
+	if(getsockopt(server, SOL_SOCKET, SO_PEERCRED, &creds, &len))
+		panic_errno("getsockopt SO_PEERCRED");
+	if(kill(creds.pid, SIGTERM))
+		panic_errno("kill");
+}
+
 void check_startup()
 {
 	if(!startup_over)

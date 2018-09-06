@@ -67,6 +67,12 @@ bool ThreadData::ptrace_peekdata(void *addr, long &word)
 	return errno == 0;
 }
 
+bool ThreadData::ptrace_pokedata(void *addr, long word)
+{
+	errno = 0;
+	return !ptrace(PTRACE_POKEDATA, addr, (void *)(intptr_t)word);
+}
+
 bool ThreadData::ptrace_getregset(int set, struct iovec &iov)
 {
 	return !ptrace(PTRACE_GETREGSET, (void *)(intptr_t)set, (void *)&iov);

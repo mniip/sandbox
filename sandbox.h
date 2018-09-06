@@ -50,6 +50,7 @@ public:
 	bool ptrace_resume(int, int signal = 0);
 	bool ptrace_getsiginfo(siginfo_t &);
 	bool ptrace_peekdata(void *, long &word);
+	bool ptrace_pokedata(void *, long word);
 	bool ptrace_getregset(int, struct iovec &);
 	bool ptrace_setregset(int, struct iovec &);
 
@@ -78,6 +79,7 @@ template<typename T> class Sandbox
 {
 public:
 	std::list<T> threads;
+	std::list<pid_t> ignore_once;
 
 	typename std::list<T>::iterator thread_add(pid_t);
 	typename std::list<T>::iterator find_tid(pid_t);
