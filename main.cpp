@@ -8,6 +8,7 @@
 #include "path.h"
 #include "fs.h"
 #include "wakeup.h"
+#include "config.h"
 
 extern "C" {
 #include <stdio.h>
@@ -233,18 +234,23 @@ void ignore(int sig)
 
 int main(int argc, char **argv)
 {
-	if(argc < 3)
-		abort();
-
-	if(!strcmp(argv[1], "kill"))
+	if(argc < 3 || (std::string(argv[2]) == "kill" && argc < 4))
 	{
-		ident = argv[2];
+		fprintf(stderr, "Usage: %s <config.conf> <ident> [prog [args...]]\n", argv[0]);
+		fprintf(stderr, "       %s <config.conf> kill <ident>\n", argv[0]);
+		abort();
+	}
+
+	ident = std::string(argv[2]) == "kill" ? argv[3] : argv[2];
+	read_conf(argv[1]);
+
+	if(std::string(argv[2]) == "kill")
+	{
 		kill_session();
 		printf("Done\n");
 		exit(EXIT_SUCCESS);
 	}
 
-	ident = argv[1];
 	try_connect();
 
 	signal(SIGUSR1, ignore);
@@ -259,7 +265,7 @@ int main(int argc, char **argv)
 			panic_errno("pipe");
 		if(pipe(out_pipe))
 			panic_errno("pipe");
-		main_process = sandbox.spawn_process(argv[2], argc - 2, argv + 2, set_limits);
+		main_process = sandbox.spawn_process(argv[3], argc - 3, argv + 3, set_limits);
 		close(in_pipe[0]);
 		close(out_pipe[1]);
 		feed_in = new std::thread(feed_data, fileno(stdin), in_pipe[1], true);
