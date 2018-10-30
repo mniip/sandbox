@@ -7,6 +7,7 @@
 #include "sandbox.h"
 #include "path.h"
 #include "arch.h"
+#include "config.h"
 #include "wakeup.h"
 
 extern "C" {
@@ -54,7 +55,9 @@ public:
 		switch(i.sysnum())
 		{
 		case WAKE_MAGIC:
-			return do_wakeup();
+			if(conf_wakeup)
+				do_wakeup();
+			return;
 		case __NR_read:
 		case __NR_write:
 		case __NR_close:

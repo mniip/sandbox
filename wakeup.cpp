@@ -23,7 +23,9 @@ std::thread *feed_in, *feed_out;
 bool startup_over = false;
 int written = 0;
 
-void feed_data(int from, int to, bool track)
+bool close_input = false;
+
+void feed_data(int from, int to, bool track, bool closeeof)
 {
 	const size_t BLOCK_SIZE = 4096;
 	char buffer[BLOCK_SIZE];
@@ -48,6 +50,12 @@ void feed_data(int from, int to, bool track)
 	{
 		printf("[Read error]\n");
 		exit(0);
+	}
+	if(closeeof)
+	{
+		close_input = true;
+		if(startup_over)
+			close(to);
 	}
 }
 
@@ -114,8 +122,8 @@ void do_wakeup()
 	close(server);
 	unlink((conf_sockdir + "/socket_" + ident).c_str());
 
-	feed_in = new std::thread(feed_data, client, in_pipe[1], false);
-	feed_out = new std::thread(feed_data, out_pipe[0], client, false);
+	feed_in = new std::thread(feed_data, client, in_pipe[1], false, !conf_wakeup);
+	feed_out = new std::thread(feed_data, out_pipe[0], client, false, false);
 
 	old_client = client;
 	set_timer();
@@ -137,8 +145,8 @@ void try_connect()
 		return;
 	}
 
-	std::thread feed_in(feed_data, fileno(stdin), server, false);
-	feed_data(server, fileno(stdout), false);
+	std::thread feed_in(feed_data, fileno(stdin), server, false, !conf_wakeup);
+	feed_data(server, fileno(stdout), false, false);
 	exit(0);
 }
 
@@ -181,6 +189,8 @@ void check_startup()
 			panic_errno("FIONREAD");
 		if(buffer - written < 0)
 		{
+			if(close_input)
+				close(in_pipe[1]);
 			startup_over = true;
 			set_timer();
 		}

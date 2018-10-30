@@ -20,6 +20,7 @@ std::vector<std::pair<int, rlim_t>> conf_rlimit;
 std::vector<std::string> conf_http;
 std::string conf_downloadpat = "download_XXXXXX";
 std::string conf_sockdir = ".";
+bool conf_wakeup;
 
 std::map<std::string, int> rlim_name = {
 	{ "AS",         RLIMIT_AS         },
@@ -120,6 +121,10 @@ static void process_line(std::string key, std::istringstream &iss)
 		std::string dir;
 		if(iss >> dir)
 			conf_sockdir = dir;
+	}
+	else if(key == "wakeup")
+	{
+		conf_wakeup = true;
 	}
 }
 

@@ -265,8 +265,8 @@ int main(int argc, char **argv)
 		}
 		close(in_pipe[0]);
 		close(out_pipe[1]);
-		feed_in = new std::thread(feed_data, fileno(stdin), in_pipe[1], true);
-		feed_out = new std::thread(feed_data, out_pipe[0], fileno(stdout), false);
+		feed_in = new std::thread(feed_data, fileno(stdin), in_pipe[1], true, !conf_wakeup);
+		feed_out = new std::thread(feed_data, out_pipe[0], fileno(stdout), false, false);
 		sandbox.event_loop();
 		exit(0);
 	}
