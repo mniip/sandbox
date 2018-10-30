@@ -312,8 +312,6 @@ public:
 				}
 				return;
 			}
-		case __NR_futimesat:
-		case __NR_utimensat:
 		case __NR_readlinkat:
 		case __NR_faccessat:
 		//case __NR_execveat:
@@ -324,6 +322,22 @@ public:
 					return block(i, -EBADF);
 				int error = -ENOENT;
 				if(!can_see_path(path, AT_FDCWD, error))
+					return block(i, error);
+				return;
+			}
+		case __NR_futimesat:
+		case __NR_utimensat:
+			{
+				int at = i.arg(1);
+				std::string path;
+				if(i.arg(2))
+					if(!i.fetch_cstr((void *)i.arg(2), path))
+						return block(i, -EBADF);
+				int error = -ENOENT;
+				if(!can_see_path(path, at, error))
+					return block(i, error);
+				error = -EPERM;
+				if(!can_write_path(path, at, error))
 					return block(i, error);
 				return;
 			}
