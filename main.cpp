@@ -22,14 +22,6 @@ extern "C" {
 #include <sys/wait.h>
 }
 
-char const *pastebins[] =
-{
-	"http://tcpst.net/",
-	"https://tcpst.net/",
-	"http://tcp.st/",
-	"https://tcp.st/"
-};
-
 pid_t main_process;
 class TracedThread;
 Sandbox<TracedThread> sandbox;
@@ -124,11 +116,11 @@ public:
 					newpath = "/dev/null";
 					return true;
 				}
-				char filename[] = "download_XXXXXX";
-				int fd = mkstemp(filename);
+				std::string filename = conf_downloadpat;
+				int fd = mkstemp(&filename[0]);
 				if(fd == -1)
 					return false;
-				unlink(filename);
+				unlink(&filename[0]);
 
 				pid_t pid = fork();
 				if(pid == -1)

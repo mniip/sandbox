@@ -2,6 +2,7 @@
 #include <string>
 
 #include "sandbox.h"
+#include "config.h"
 
 extern "C" {
 #include <stdio.h>
@@ -99,7 +100,7 @@ void do_wakeup()
 	struct sockaddr_un addr;
 	memset(&addr, 0, sizeof addr);
 	addr.sun_family = AF_UNIX;
-	strncpy(addr.sun_path, ("socket_" + std::string(ident)).c_str(), sizeof addr.sun_path - 1);
+	strncpy(addr.sun_path, (conf_sockdir + "/socket_" + ident).c_str(), sizeof addr.sun_path - 1);
 	if(bind(server, (struct sockaddr *)&addr, sizeof addr))
 		panic_errno("bind");
 
@@ -111,7 +112,7 @@ void do_wakeup()
 		panic_errno("accept");
 
 	close(server);
-	unlink(("socket_" + std::string(ident)).c_str());
+	unlink((conf_sockdir + "/socket_" + ident).c_str());
 
 	feed_in = new std::thread(feed_data, client, in_pipe[1], false);
 	feed_out = new std::thread(feed_data, out_pipe[0], client, false);
@@ -129,10 +130,10 @@ void try_connect()
 	struct sockaddr_un addr;
 	memset(&addr, 0, sizeof addr);
 	addr.sun_family = AF_UNIX;
-	strncpy(addr.sun_path, ("socket_" + std::string(ident)).c_str(), sizeof addr.sun_path - 1);
+	strncpy(addr.sun_path, (conf_sockdir + "/socket_" + ident).c_str(), sizeof addr.sun_path - 1);
 	if(connect(server, (struct sockaddr *)&addr, sizeof addr))
 	{
-		unlink(("socket_" + std::string(ident)).c_str());
+		unlink((conf_sockdir + "/socket_" + ident).c_str());
 		return;
 	}
 
@@ -150,7 +151,7 @@ void kill_session()
 	struct sockaddr_un addr;
 	memset(&addr, 0, sizeof addr);
 	addr.sun_family = AF_UNIX;
-	strncpy(addr.sun_path, ("socket_" + std::string(ident)).c_str(), sizeof addr.sun_path - 1);
+	strncpy(addr.sun_path, (conf_sockdir + "/socket_" + ident).c_str(), sizeof addr.sun_path - 1);
 	if(connect(server, (struct sockaddr *)&addr, sizeof addr))
 	{
 		if(errno == ENOENT)
@@ -161,7 +162,7 @@ void kill_session()
 		panic_errno("connect");
 	}
 
-	unlink(("socket_" + std::string(ident)).c_str());
+	unlink((conf_sockdir + "/socket_" + ident).c_str());
 
 	struct ucred creds;
 	socklen_t len = sizeof creds;

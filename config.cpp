@@ -18,6 +18,8 @@ bool conf_chdir;
 std::string conf_chdirto;
 std::vector<std::pair<int, rlim_t>> conf_rlimit;
 std::vector<std::string> conf_http;
+std::string conf_downloadpat = "download_XXXXXX";
+std::string conf_sockdir = ".";
 
 std::map<std::string, int> rlim_name = {
 	{ "AS",         RLIMIT_AS         },
@@ -106,6 +108,18 @@ static void process_line(std::string key, std::istringstream &iss)
 		std::string url;
 		if(iss >> url)
 			conf_http.push_back(url);
+	}
+	else if(key == "downloadpat")
+	{
+		std::string pat;
+		if(iss >> pat)
+			conf_downloadpat = pat;
+	}
+	else if(key == "sockdir")
+	{
+		std::string dir;
+		if(iss >> dir)
+			conf_sockdir = dir;
 	}
 }
 
