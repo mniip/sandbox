@@ -61,7 +61,7 @@ void feed_data(int from, int to, bool track, bool closeeof)
 
 void time_limit()
 {
-    sleep(5);
+    sleep(conf_timelimit);
     fprintf(old_client == -1 ? stdout : fdopen(old_client, "w"), "[Timed out]\n");
     exit(0);
 }

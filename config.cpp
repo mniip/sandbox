@@ -21,6 +21,7 @@ std::vector<std::string> conf_http;
 std::string conf_downloadpat = "download_XXXXXX";
 std::string conf_sockdir = ".";
 bool conf_wakeup;
+int conf_timelimit = 1;
 
 std::map<std::string, int> rlim_name = {
 	{ "AS",         RLIMIT_AS         },
@@ -125,6 +126,12 @@ static void process_line(std::string key, std::istringstream &iss)
 	else if(key == "wakeup")
 	{
 		conf_wakeup = true;
+	}
+	else if(key == "timelimit")
+	{
+		int limit;
+		if(iss >> limit)
+			conf_timelimit = limit;
 	}
 }
 

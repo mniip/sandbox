@@ -25,6 +25,7 @@ extern std::vector<std::string> conf_http;
 extern std::string conf_downloadpat;
 extern std::string conf_sockdir;
 extern bool conf_wakeup;
+extern int conf_timelimit;
 
 void read_conf(std::string);
 
