@@ -22,21 +22,6 @@ extern "C" {
 #include <sys/wait.h>
 }
 
-#define FSROOT "/var/lib/xsbot/sandbox/root"
-#define FSHOME FSROOT "/data"
-
-char const *allowed_paths[] =
-{
-	FSROOT,
-	"/usr/lib/tcc/libtcc1.a",
-	"/proc/self",
-	"/bin/dash",
-	"/dev/null",
-	"/dev/zero",
-	"/dev/urandom",
-	"/dev/full",
-};
-
 char const *pastebins[] =
 {
 	"http://tcpst.net/",
@@ -60,8 +45,8 @@ public:
 	bool can_see_path(std::string path, int at, int &error)
 	{
 		std::string canon = canon_path_at(tid, at, path);
-		for(int i = 0; i < sizeof allowed_paths / sizeof *allowed_paths; i++)
-			if(in_dir(allowed_paths[i], canon))
+		for(std::vector<std::string>::const_iterator i = conf_see.begin(), end = conf_see.end(); i != end; i++)
+			if(in_dir(*i, canon))
 				return true;
 //		if(canon == "/")
 //			return true;
@@ -71,19 +56,21 @@ public:
 	bool can_write_path(std::string path, int at, int &error)
 	{
 		std::string canon = canon_path_at(tid, at, path);
-		if(in_dir(FSHOME "/http:", canon) || in_dir(FSHOME "/https:", canon))
+		std::string cwd = canon_path_at(tid, AT_FDCWD, "");
+		if(in_dir(cwd + "/http:", canon) || in_dir(cwd + "/https:", canon))
 		{
 			error = -EEXIST;
 			return false;
 		}
-		if(in_dir(FSHOME, canon))
-			return true;
+		for(std::vector<std::string>::const_iterator i = conf_write.begin(), end = conf_write.end(); i != end; i++)
+			if(in_dir(*i, canon))
+				return true;
 		return false;
 	}
 
 	bool can_create_thread(Sandbox<TracedThread> &s)
 	{
-		return s.threads.size() < 16;
+		return s.threads.size() < conf_maxthreads;
 	}
 
 	void on_exit(Sandbox<TracedThread> &s, int status)
@@ -99,8 +86,8 @@ public:
 			path = "http://" + path.substr(strlen("http:/"));
 		else if(path.compare(0, strlen("https:/"), "https:/") == 0 && path.compare(0, strlen("https://"), "https://") != 0)
 			path = "https://" + path.substr(strlen("https:/"));
-		for(int i = 0; i < sizeof pastebins / sizeof *pastebins; i++)
-			if(path.compare(0, strlen(pastebins[i]), pastebins[i]) == 0)
+		for(std::vector<std::string>::const_iterator i = conf_http.begin(), end = conf_http.end(); i != end; i++)
+			if(path.compare(0, i->size(), *i) == 0)
 			{
 				st.st_dev = 0;
 				st.st_ino = 0;
@@ -129,8 +116,8 @@ public:
 			path = "http://" + path.substr(strlen("http:/"));
 		else if(path.compare(0, strlen("https:/"), "https:/") == 0 && path.compare(0, strlen("https://"), "https://") != 0)
 			path = "https://" + path.substr(strlen("https:/"));
-		for(int i = 0; i < sizeof pastebins / sizeof *pastebins; i++)
-			if(path.compare(0, strlen(pastebins[i]), pastebins[i]) == 0)
+		for(std::vector<std::string>::const_iterator i = conf_http.begin(), end = conf_http.end(); i != end; i++)
+			if(path.compare(0, i->size(), *i) == 0)
 			{
 				if((flags & O_ACCMODE) != O_RDONLY)
 				{
@@ -198,29 +185,37 @@ void set_limits()
 	close(out_pipe[0]);
 	close(out_pipe[1]);
 
-	DIR *fds = opendir("/proc/self/fd/");
-	if(fds)
+	if(conf_closefds)
 	{
-		struct dirent *dent;
-		while(dent = readdir(fds))
-			if(atoi(dent->d_name) > 2)
-				close(atoi(dent->d_name));
-		closedir(fds);
+		DIR *fds = opendir("/proc/self/fd/");
+		if(fds)
+		{
+			struct dirent *dent;
+			while(dent = readdir(fds))
+				if(atoi(dent->d_name) > 2)
+					close(atoi(dent->d_name));
+			closedir(fds);
+		}
 	}
+
 	fflush(stdout);
 
-	setenv("LD_LIBRARY_PATH", FSROOT "/lib:" FSROOT "/usr/lib", 1);
-	setenv("PATH", FSROOT "/bin", 1);
-	setenv("SHELL", FSROOT "/bin/sh", 1);
-	chdir(FSHOME);
-	struct rlimit limit;
-	limit.rlim_max = limit.rlim_cur = 2047 * 1024 * 1024;
-	setrlimit(RLIMIT_AS, &limit);
-	limit.rlim_max = limit.rlim_cur = 0;
-	setrlimit(RLIMIT_CORE, &limit);
+	if(conf_clearenv)
+		clearenv();
+	for(std::vector<std::pair<std::string, std::string>>::const_iterator i = conf_setenv.begin(), end = conf_setenv.end(); i != end; i++)
+		setenv(i->first.c_str(), i->second.c_str(), 1);
+	for(std::vector<std::string>::const_iterator i = conf_unsetenv.begin(), end = conf_unsetenv.end(); i != end; i++)
+		unsetenv(i->c_str());
 
-	//limit.rlim_max = limit.rlim_cur = 5;
-	//setrlimit(RLIMIT_CPU, &limit);
+	if(conf_chdir)
+		chdir(conf_chdirto.c_str());
+
+	struct rlimit limit;
+	for(std::vector<std::pair<int, rlim_t>>::const_iterator i = conf_rlimit.begin(), end = conf_rlimit.end(); i != end; i++)
+	{
+		limit.rlim_max = limit.rlim_cur = i->second;
+		setrlimit(i->first, &limit);
+	}
 }
 
 void detach(int sig)
@@ -265,7 +260,17 @@ int main(int argc, char **argv)
 			panic_errno("pipe");
 		if(pipe(out_pipe))
 			panic_errno("pipe");
-		main_process = sandbox.spawn_process(argv[3], argc - 3, argv + 3, set_limits);
+		if(argc >= 4)
+		{
+			main_process = sandbox.spawn_process(argv[3], argc - 3, argv + 3, set_limits);
+		}
+		else
+		{
+			std::vector<char *> av;
+			for(std::vector<std::string>::iterator i = conf_arg.begin(), end = conf_arg.end(); i != end; i++)
+				av.push_back(&(*i)[0]);
+			main_process = sandbox.spawn_process(conf_program.c_str(), av.size(), av.data(), set_limits);
+		}
 		close(in_pipe[0]);
 		close(out_pipe[1]);
 		feed_in = new std::thread(feed_data, fileno(stdin), in_pipe[1], true);
