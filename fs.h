@@ -100,6 +100,7 @@ public:
 		case __NR_fdatasync:
 		case __NR_ftruncate:
 		case __NR_getdents:
+		case __NR_getdents64:
 		case __NR_getcwd:
 		case __NR_fchdir:
 		case __NR_fchmod:
@@ -448,6 +449,10 @@ public:
 			if(!can_create_thread(s))
 				block(i, -EPERM);
 			return;
+		case __NR_prlimit64:
+			if(i.arg(3))
+				block(i, -EPERM);
+			return;
 		//case __NR_uselib:
 		//case __NR_ustat:
 		//case __NR_sysfs:
@@ -504,7 +509,6 @@ public:
 		//case __NR_get_thread_area:
 		//case __NR_lookup_dcookie:
 		//case __NR_remap_file_pages:
-		//case __NR_getdents64:
 		//case __NR_semtimedop:
 		//case __NR_clock_settime:
 		//case __NR_clock_getres:
@@ -546,7 +550,6 @@ public:
 		//case __NR_recvmmsg:
 		//case __NR_fanotify_init:
 		//case __NR_fanotify_mark:
-		//case __NR_prlimit64:
 		//case __NR_name_to_handle_at:
 		//case __NR_open_by_handle_at:
 		//case __NR_clock_adjtime:
