@@ -22,6 +22,7 @@ std::string conf_downloadpat = "download_XXXXXX";
 std::string conf_sockdir = ".";
 bool conf_wakeup;
 int conf_timelimit = 1;
+bool conf_report;
 
 std::map<std::string, int> rlim_name = {
 	{ "AS",         RLIMIT_AS         },
@@ -132,6 +133,10 @@ static void process_line(std::string key, std::istringstream &iss)
 		int limit;
 		if(iss >> limit)
 			conf_timelimit = limit;
+	}
+	else if(key == "report")
+	{
+		conf_report = true;
 	}
 }
 

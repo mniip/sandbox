@@ -26,6 +26,7 @@ extern std::string conf_downloadpat;
 extern std::string conf_sockdir;
 extern bool conf_wakeup;
 extern int conf_timelimit;
+extern bool conf_report;
 
 void read_conf(std::string);
 

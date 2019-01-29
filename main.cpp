@@ -42,6 +42,11 @@ public:
 				return true;
 //		if(canon == "/")
 //			return true;
+		if(conf_report)
+			if(at == AT_FDCWD)
+				printf("[See %s=%s]\n", path.c_str(), canon.c_str());
+			else
+				printf("[See (%d)%s=%s]\n", at, path.c_str(), canon.c_str());
 		return false;
 	}
 
@@ -57,6 +62,11 @@ public:
 		for(std::vector<std::string>::const_iterator i = conf_write.begin(), end = conf_write.end(); i != end; i++)
 			if(in_dir(*i, canon))
 				return true;
+		if(conf_report)
+			if(at == AT_FDCWD)
+				printf("[Write %s=%s]\n", path.c_str(), canon.c_str());
+			else
+				printf("[Write (%d)%s=%s]\n", at, path.c_str(), canon.c_str());
 		return false;
 	}
 
