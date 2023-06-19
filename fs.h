@@ -157,6 +157,7 @@ public:
 		case __NR_timer_getoverrun:
 		case __NR_timer_delete:
 		case __NR_clock_gettime:
+		case __NR_clock_getres:
 		case __NR_exit_group:
 		case __NR_epoll_wait:
 		case __NR_epoll_ctl:
@@ -511,7 +512,6 @@ public:
 		//case __NR_remap_file_pages:
 		//case __NR_semtimedop:
 		//case __NR_clock_settime:
-		//case __NR_clock_getres:
 		//case __NR_clock_nanosleep:
 		//case __NR_vserver:
 		//case __NR_mbind:
