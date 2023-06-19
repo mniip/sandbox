@@ -464,7 +464,6 @@ public:
 		//case __NR_modify_ldt:
 		//case __NR_pivot_root:
 		//case __NR__sysctl:
-		//case __NR_prctl:
 		//case __NR_adjtimex:
 		//case __NR_chroot:
 		//case __NR_sync:
@@ -616,6 +615,7 @@ public:
 		case __NR_munlock:
 		case __NR_mlockall:
 		case __NR_munlockall:
+		case __NR_prctl:
 		case __NR_mknodat:
 			block(i, -EPERM);
 			return;
